@@ -1,36 +1,16 @@
-// bulk_load.cpp - builds the B+ tree bottom-up (Task 2, Member 3).
-//
-// Bulk loading, in three steps:
-//   1. Sort all (key, RecordId) entries by key.
-//   2. Pack them left to right into leaves of up to n entries, and chain the
-//      leaves together with `next` pointers.
-//   3. Build each level above from the level below: group up to n+1 nodes under
-//      one parent, whose keys are the smallest key of each child except the first.
-//      Repeat until a level has a single node: that node is the root.
-//
-// Every node is packed full, except that the last node of a level may be short.
-// If it would be below the minimum fill, entries are moved to it from its left
-// neighbour (see groupSizes).
-//
-// Duplicate keys (e.g. 848 games have FG_PCT_home = 0.500) are stored as separate
-// entries, so a run of equal keys can continue from one leaf into the next. A
-// parent key then equals the last key of the left child as well, so
-// "left subtree <= separator <= right subtree" holds (not strictly less).
-// TODO(team): confirm this with Member 2/4; the alternative is one key per value
-// with a list of RecordIds.
+// bulk_load.cpp - builds the B+ tree bottom-up: sort the entries, fill the
+// leaves, then build each level of internal nodes until one node (the root) is left.
 #include <algorithm>
 #include <utility>
 
-#include "bptree.h"
+#include "tree_build.h"
 
 namespace bptree {
 
 namespace {
 
-// Splits `total` items into consecutive groups of at most `maxPer` items. Groups
-// are full except the last one; if there is more than one group, the last is
-// topped up from the one before it so that it has at least `minPer`.
-// This is always possible because maxPer >= 2*minPer - 1 for both node kinds.
+// Split total items into groups of at most maxPer. If the last group is below
+// minPer, move some items into it from the group before.
 std::vector<std::size_t> groupSizes(std::size_t total, std::size_t maxPer, std::size_t minPer) {
     std::vector<std::size_t> sizes;
     for (std::size_t left = total; left > 0; left -= sizes.back())
@@ -45,59 +25,63 @@ std::vector<std::size_t> groupSizes(std::size_t total, std::size_t maxPer, std::
 
 }  // namespace
 
-void BPlusTree::bulkLoad(std::vector<Entry> entries) {
-    // Step 1: sort.
+void bulkLoad(BPlusTree& tree, std::vector<Entry> entries) {
+    const std::size_t n = tree.n();
+
     std::sort(entries.begin(), entries.end(), entryLess);
 
-    if (entries.empty()) {                     // empty tree: the root is an empty leaf
-        root_ = store_.allocate();
-        store_.write(root_, Node{});
+    if (entries.empty()) {
+        BlockId leaf = tree.allocateLeaf();
+        tree.setTreeInfo(leaf, 1, 0, leaf);
         return;
     }
 
-    // One node of the level being built: its id and the smallest key in its subtree
-    // (the key its parent needs as a separator).
-    struct Built { NodeId id; float minKey; };
+    struct Built { BlockId id; float minKey; };
     std::vector<Built> level;
 
-    // Step 2: leaves. Allocate all ids first so each leaf can point to the next one.
-    std::vector<std::size_t> leafSizes = groupSizes(entries.size(), n_, minLeafKeys());
-    std::vector<NodeId> leafIds;
-    for (std::size_t i = 0; i < leafSizes.size(); ++i) leafIds.push_back(store_.allocate());
+    // leaves - allocate all ids first so each leaf knows the next one
+    std::vector<std::size_t> leafSizes = groupSizes(entries.size(), n, minLeafKeys(n));
+    std::vector<BlockId> leafIds;
+    for (std::size_t i = 0; i < leafSizes.size(); ++i) leafIds.push_back(tree.allocateLeaf());
 
     std::size_t pos = 0;
     for (std::size_t i = 0; i < leafSizes.size(); ++i) {
-        Node leaf;
-        leaf.isLeaf = true;
+        LeafNode leaf;
+        leaf.nodeId = leafIds[i];
+        leaf.numKeys = static_cast<std::uint16_t>(leafSizes[i]);
         for (std::size_t j = 0; j < leafSizes[i]; ++j, ++pos) {
-            leaf.keys.push_back(entries[pos].key);
-            leaf.records.push_back(entries[pos].rid);
+            leaf.keys[j] = entries[pos].key;
+            leaf.recordIds[j] = entries[pos].rid;
         }
-        leaf.next = (i + 1 < leafIds.size()) ? leafIds[i + 1] : NO_NODE;
-        store_.write(leafIds[i], leaf);
-        level.push_back({leafIds[i], leaf.keys.front()});
+        leaf.nextLeaf = (i + 1 < leafIds.size()) ? leafIds[i + 1] : NO_NEXT_LEAF;
+        tree.writeLeaf(leaf);
+        level.push_back({leaf.nodeId, leaf.keys[0]});
     }
 
-    // Step 3: internal levels, until one node is left.
+    // internal levels - a parent's keys are the smallest key of each child except the first
+    std::uint32_t levels = 1;
     while (level.size() > 1) {
         std::vector<Built> parents;
-        std::vector<std::size_t> sizes = groupSizes(level.size(), n_ + 1, minInternalChildren());
+        std::vector<std::size_t> sizes = groupSizes(level.size(), n + 1, minInternalChildren(n));
         std::size_t c = 0;
         for (std::size_t size : sizes) {
-            Node parent;
-            parent.isLeaf = false;
+            InternalNode parent;
+            parent.nodeId = tree.allocateInternal();
+            parent.numKeys = static_cast<std::uint16_t>(size - 1);
             float minKey = level[c].minKey;
             for (std::size_t j = 0; j < size; ++j, ++c) {
-                parent.children.push_back(level[c].id);
-                if (j > 0) parent.keys.push_back(level[c].minKey);
+                parent.children[j] = level[c].id;
+                if (j > 0) parent.keys[j - 1] = level[c].minKey;
             }
-            NodeId id = store_.allocate();
-            store_.write(id, parent);
-            parents.push_back({id, minKey});
+            tree.writeInternal(parent);
+            parents.push_back({parent.nodeId, minKey});
         }
         level = std::move(parents);
+        ++levels;
     }
-    root_ = level.front().id;
+
+    tree.setTreeInfo(level.front().id, levels, static_cast<std::uint32_t>(entries.size()),
+                     leafIds.front());
 }
 
 }  // namespace bptree
