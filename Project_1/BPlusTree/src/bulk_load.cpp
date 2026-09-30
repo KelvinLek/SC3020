@@ -1,5 +1,4 @@
-// bulk_load.cpp - builds the B+ tree bottom-up: sort the entries, fill the
-// leaves, then build each level of internal nodes until one node (the root) is left.
+// bulk_load.cpp - builds the B+ tree bottom-up: sort the entries, fill the leaves, then build each level of internal nodes until one node (the root) is left.
 #include <algorithm>
 #include <utility>
 
@@ -9,8 +8,7 @@ namespace bptree {
 
 namespace {
 
-// Split total items into groups of at most maxPer. If the last group is below
-// minPer, move some items into it from the group before.
+// Split total items into groups of at most maxPer. If the last group is below minPer, move some items into it from the group before.
 std::vector<std::size_t> groupSizes(std::size_t total, std::size_t maxPer, std::size_t minPer) {
     std::vector<std::size_t> sizes;
     for (std::size_t left = total; left > 0; left -= sizes.back())
