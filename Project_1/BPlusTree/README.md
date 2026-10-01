@@ -209,43 +209,31 @@ Paths below are relative to `Project_1`.
 | `build.sh` | Compiles Tasks 1, 2, and 3 separately using C++17 |
 | `run_demo.sh` | Builds and runs all three tasks using `games.txt` |
 
-### Install and run on Windows
+### Build and run
 
-Install [MSYS2](https://www.msys2.org/) and open **MSYS2 UCRT64** from the Start
-menu. On a standard Intel/AMD 64-bit Windows PC, install the compiler with:
+Requirements: a C++17-capable `g++` compiler and Bash, configured for your operating system.
+
+From the `Project_1` directory, compile all three programs:
 
 ```bash
-pacman -S --needed mingw-w64-ucrt-x86_64-gcc
+bash build.sh
 ```
 
-Check that the compiler is available:
+After Tasks 1 and 2 have generated the database and index, run Task 3:
 
 ```bash
-g++ --version
+./task3.exe Storage/data.db BPlusTree/index.db
 ```
 
-In that same terminal, change to the repository's `Project_1` folder. For example,
-if the repository is saved at `C:\SC3020`, run:
+To compile and run the complete demonstration from `games.txt`:
 
 ```bash
-cd /c/SC3020/Project_1
 bash run_demo.sh
 ```
 
-Replace the example path with your actual folder location. Use quotation marks
-if the path contains spaces. Run these commands in **MSYS2 UCRT64**, not Windows
-Command Prompt or PowerShell.
+The demonstration regenerates its inputs under `demo_inputs`. Task 3 operates on copies and saves its results in a new `task3_runs/run_NNN` folder, preserving the original input files and previous results.
 
-`run_demo.sh` performs the following steps:
-
-1. Compiles `task1.exe`, `task2.exe`, and `task3.exe`.
-2. Runs Task 1 to create `demo_inputs/data.db` from `games.txt`.
-3. Runs Task 2 to create the complete `demo_inputs/index.db`.
-4. Runs Task 3 on new copies of those files in `task3_runs/run_001`.
-
-Subsequent Task 3 runs create `run_002`, `run_003`, and so on. Rerunning the demo
-regenerates `demo_inputs`, but it preserves previous Task 3 run folders and does
-not overwrite the group's `Storage/data.db` or `BPlusTree/index.db`.
+**Platform notes:** On Windows, run these commands in MSYS2 UCRT64. On macOS or Linux, use a terminal with Bash and a compatible compiler available. The build script names its executables with the `.exe` suffix on every platform; use the filenames shown above.
 
 ### Run Task 3 separately
 
