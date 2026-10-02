@@ -1,22 +1,13 @@
-# =============================================================
-# SC3020 Project 1 – Unified Makefile (Member 5: integration)
-#
-# Usage (run from Project_1/):
-#   make              # build all three tasks
-#   make task1        # build only Task 1 (storage)
-#   make task2        # build only Task 2 (B+ tree)
-#   make task3        # build only Task 3 (deletion + comparison)
-#   make run          # run the full pipeline end-to-end
-#   make clean        # remove all build artefacts
-#
-# All binaries are placed in Project_1/ (current directory).
-# The output database files go into out/.
-# =============================================================
+# Makefile for SC3020 Project 1
+# Run from Project_1/
+# Usage:
+#   make          - build all tasks
+#   make run      - build and run full pipeline
+#   make clean    - remove built files
 
 CXX      ?= g++
 CXXFLAGS ?= -std=c++17 -O2 -Wall -Wextra -IStorage/src
 
-# Source groups
 STORAGE = Storage/src/disk.cpp \
           Storage/src/record.cpp \
           Storage/src/storage.cpp
@@ -36,39 +27,22 @@ HDRS    = $(wildcard Storage/src/*.h BPlusTree/src/*.h)
 
 all: task1 task2 task3
 
-# Task 1 – load games.txt into the block-based storage file (data.db)
 task1: Storage/src/task1.cpp $(STORAGE) $(HDRS)
 	$(CXX) $(CXXFLAGS) -o task1 Storage/src/task1.cpp $(STORAGE)
 
-# Task 2 – bulk-load the B+ tree index (index.db) from data.db
 task2: BPlusTree/src/task2.cpp $(TREE) $(STORAGE) $(HDRS)
 	$(CXX) $(CXXFLAGS) -o task2 BPlusTree/src/task2.cpp $(TREE) $(STORAGE)
 
-# Task 3 – indexed retrieval, linear scan, and deletion of FG_PCT_home > 0.5
 task3: BPlusTree/src/task3.cpp BPlusTree/src/bplustree_delete.cpp $(TREE) $(STORAGE) $(HDRS)
 	$(CXX) $(CXXFLAGS) -o task3 \
 	    BPlusTree/src/task3.cpp \
 	    BPlusTree/src/bplustree_delete.cpp \
 	    $(TREE) $(STORAGE)
 
-# Run the full pipeline: Task 1 → Task 2 → Task 3
-# Output files go in out/ so the originals are never overwritten.
 run: all
 	@mkdir -p out
-	@echo ""
-	@echo "=========================================="
-	@echo "  Task 1: Loading games.txt into storage"
-	@echo "=========================================="
 	./task1 games.txt out/data.db
-	@echo ""
-	@echo "=========================================="
-	@echo "  Task 2: Building B+ tree index"
-	@echo "=========================================="
 	./task2 out/data.db --index out/index.db
-	@echo ""
-	@echo "=========================================="
-	@echo "  Task 3: Retrieval comparison + deletion"
-	@echo "=========================================="
 	./task3 out/data.db out/index.db
 
 clean:
